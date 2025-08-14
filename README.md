@@ -1,6 +1,6 @@
-# Code for manuscript 'Change Detection Mamba with Gating Manipulation'.
+# Code for manuscript 'Change Detection Mamba with Boundary-Specific Supervision'.
 ---------------------------------------------
-Here I provide the PyTorch implementation for GMMamba.
+Here I provide the PyTorch implementation for BSSMamba.
 
 
 ## ENVIRONMENT
@@ -38,6 +38,7 @@ A more detailed README.
 
 ## Contact
 Email: guangxingwang@mail.nwpu.edu.cn
+
 
 
 
