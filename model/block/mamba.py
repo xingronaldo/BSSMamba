@@ -12,7 +12,7 @@ class MambaBlk(nn.Module):
     def __init__(self, channels):
         super().__init__()
         self.norm = nn.LayerNorm(channels)
-        self.attn = LCPMamba(channels)
+        self.attn = Mamba_(channels)
 
     def forward(self, x): #BHWC->BHWC
         x = x + self.attn(self.norm(x))
@@ -20,7 +20,7 @@ class MambaBlk(nn.Module):
 
 
 # with bidirectional scanning
-class LCPMamba(nn.Module):
+class Mamba_(nn.Module):
     def __init__(
             self,
             d_model,
@@ -60,7 +60,6 @@ class LCPMamba(nn.Module):
             **factory_kwargs,
         )
         self.act = nn.SiLU()
-
         self.x_proj = (
             nn.Linear(self.d_inner, (self.dt_rank + self.d_state * 2), bias=False, **factory_kwargs),
             nn.Linear(self.d_inner, (self.dt_rank + self.d_state * 2), bias=False, **factory_kwargs),
@@ -85,8 +84,10 @@ class LCPMamba(nn.Module):
 
         self.out_norm = nn.LayerNorm(self.d_inner)
         self.z_proj = nn.Linear(self.d_inner, self.d_inner, bias=bias, **factory_kwargs)
+        self.spectral_transform = SpectralTransform(self.d_inner)
         self.z_norm = nn.LayerNorm(self.d_inner)
         self.out_proj = nn.Linear(self.d_inner, self.d_model, bias=bias, **factory_kwargs)
+
         self.dropout = nn.Dropout(dropout) if dropout > 0. else None
 
     @staticmethod
@@ -183,18 +184,58 @@ class LCPMamba(nn.Module):
         x, z = xz.chunk(2, dim=-1)
 
         x = rearrange(x, 'b h w c -> b c h w')
-        x = self.act(self.conv2d(x))
+        x = F.silu(self.conv2d(x))
         y1, y2 = self.forward_core(x)
         assert y1.dtype == torch.float32
         y = y1 + y2
         y = torch.transpose(y, dim0=1, dim1=2).contiguous().view(B, H, W, -1)
         y = self.out_norm(y)
         x = rearrange(x, 'b c h w -> b h w c')
-        z = z * x
-        z = self.z_proj(z)
+        z = z * self.z_proj(x)
+        z = self.spectral_transform(z)
         y = y * self.z_norm(z)
         out = self.out_proj(y)
         if self.dropout is not None:
             out = self.dropout(out)
         return out
 
+
+class SpectralTransform(nn.Module):
+    def __init__(self, dim):
+        super(SpectralTransform, self).__init__()
+        self.in_proj = nn.Conv2d(dim, dim//2, 1, padding=0)
+        self.fu = FourierUnit(dim//2, dim//2)
+        self.out_proj = nn.Conv2d(dim//2, dim, 1, padding=0)
+
+    def forward(self, x):
+        x = rearrange(x, 'b h w c -> b c h w')
+        x = self.in_proj(x)
+        x = self.fu(x)
+        x = self.out_proj(x)
+
+        x = rearrange(x, 'b c h w -> b h w c')
+        return x
+
+
+class FourierUnit(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(FourierUnit, self).__init__()
+        self.conv = nn.Conv2d(in_channels * 2, out_channels * 2, kernel_size=1, padding=0)
+
+    def forward(self, x):
+        B, C, H, W = x.size()
+
+        ffted = torch.fft.rfftn(x, s=(H, W), dim=(-2, -1), norm='ortho')
+        ffted = torch.stack((ffted.real, ffted.imag), dim=-1)  # (b, c, h, w/2+1, 2)
+        ffted = ffted.permute(0, 1, 4, 2, 3).contiguous()  # (b, c, 2, h, w/2+1)
+        ffted = ffted.view((B, -1,) + ffted.size()[3:])
+
+        ffted = self.conv(ffted)  # (batch, c*2, h, w/2+1)
+        ffted = F.silu(ffted)
+        ffted = ffted.view((B, -1, 2,) + ffted.size()[2:]).permute(
+            0, 1, 3, 4, 2).contiguous()  # (batch,c, t, h, w/2+1, 2)
+        ffted = torch.complex(ffted[..., 0], ffted[..., 1])
+
+        x = torch.fft.irfftn(ffted, s=(H, W), dim=(-2, -1), norm='ortho')
+
+        return x
