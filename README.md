@@ -15,8 +15,8 @@ Here I provide the PyTorch implementation for BSSMamba.
 Clone this repo:
 
 ```shell
-git clone https://github.com/xingronaldo/GMMamba.git
-cd GMMamba
+git clone https://github.com/xingronaldo/BSSMamba.git
+cd BSSMamba
 ```
 
 * Install dependencies
@@ -38,6 +38,7 @@ A more detailed README.
 
 ## Contact
 Email: guangxingwang@mail.nwpu.edu.cn
+
 
 
 
