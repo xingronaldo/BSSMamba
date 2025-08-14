@@ -31,9 +31,6 @@ if __name__ == '__main__':
             # update metric
             val_target = _data['cd_label'].detach()
             val_pred = torch.argmax(val_pred.detach(), dim=1)
-            save_path = os.path.join(opt.result_dir, str(_data['fname'][0]).split('.')[0] + '.png')
-            val_pred_ = val_pred[0].cpu().numpy() * 255
-            io.imsave(save_path, np.array(np.squeeze(val_pred_), dtype=np.uint8))
             _ = running_metric.update_cm(pr=val_pred.cpu().numpy(), gt=val_target.cpu().numpy())
         val_scores = running_metric.get_scores()
         message = '(phase: %s) ' % (opt.phase)

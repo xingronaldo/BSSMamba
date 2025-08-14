@@ -11,6 +11,7 @@ import random
 
 
 def setup_seed(seed):
+
     os.environ['PYTHONHASHSEED'] = str(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -18,6 +19,7 @@ def setup_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
     torch.backends.cudnn.deterministic = False #!
     torch.backends.cudnn.benchmark = True      #!
     torch.backends.cudnn.enabled = True        #! for accelerating training 
